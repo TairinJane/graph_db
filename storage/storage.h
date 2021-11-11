@@ -5,10 +5,26 @@
 #ifndef GRAPH_LAB_STORAGE_H
 #define GRAPH_LAB_STORAGE_H
 
-#include "../graph/graph.h"
 #include <stdio.h>
 
+#include "../graph/graph.h"
+#include "linked_list.h"
+
 #define STORAGE_MARK 66
+
+#define PAGES_INDEX 0
+
+#define NODE_BLOCK_TYPE 1
+#define RELATION_BLOCK_TYPE 2
+#define PROP_BLOCK_TYPE 3
+#define KEYS_BLOCK_TYPE 4
+#define LABELS_BLOCK_TYPE 5
+
+#define INIT_PAGES_COUNT 5
+#define COUNTERS_AMOUNT INIT_PAGES_COUNT + 1
+
+#define RECORDS_PER_PAGE 150
+#define PAGE_SIZE 8192 // 8Kb
 
 typedef struct First_Page_Offsets {
     uint32_t nodes;
@@ -29,25 +45,13 @@ typedef struct Storage_Counters {
 
 typedef struct Storage_Meta {
     uint8_t storage_mark;
-    First_Page_Offsets first_page_offsets;
-    Storage_Counters counters; //counters for each data type?
+    uint32_t first_page_offsets[COUNTERS_AMOUNT];
+    uint32_t counters_by_type[COUNTERS_AMOUNT];
 } Storage_Meta;
-
-#define NODE_BLOCK_TYPE 1
-#define RELATION_BLOCK_TYPE 2
-#define PROP_BLOCK_TYPE 3
-#define KEYS_BLOCK_TYPE 4
-#define LABELS_BLOCK_TYPE 5
-
-#define INIT_PAGES_COUNT 5
-
-#define RECORDS_PER_PAGE 150
-#define PAGE_SIZE 8192 // 8Kb
 
 typedef struct Page_Meta {
     uint8_t page_type; //nodes, rel, props, keys...
     uint16_t page_number;
-    //empty blocks bit array???
     uint8_t is_full;
     uint32_t next_page_offset;
 } Page_Meta;
@@ -55,6 +59,7 @@ typedef struct Page_Meta {
 typedef struct Storage_Descriptor {
     FILE* storage_file;
     Storage_Meta* meta;
+    Linked_List* free_blocks_of_type[INIT_PAGES_COUNT];
 } Storage_Descriptor;
 
 typedef struct Label_Descriptor {
@@ -83,7 +88,7 @@ typedef struct Relation_Descriptor {
 
 uint8_t open_storage(const char* filename, Storage_Descriptor** storage_descriptor);
 
-uint32_t find_empty_block(uint8_t block_type, Storage_Descriptor* storage_descriptor);
+Linked_List* find_empty_blocks(uint8_t block_type, Storage_Descriptor* storage_descriptor);
 
 uint8_t close_storage(Storage_Descriptor* storage_descriptor);
 
