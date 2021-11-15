@@ -10,11 +10,11 @@ int main() {
     printf("\nStorage Meta in main: mark = %d, first nodes page offset = %d, pages = %d\n",
             storage_descriptor->meta->storage_mark,
             storage_descriptor->meta->first_page_offsets[NODE_BLOCK_TYPE],
-            storage_descriptor->meta->counters_by_type[PAGES_INDEX]);
+            storage_descriptor->meta->pages_by_type[PAGES_INDEX]);
 
     for (int i = 0; i < COUNTERS_AMOUNT; ++i) {
-        printf("First page offset for type %d = %d\n", i, storage_descriptor->meta->first_page_offsets[i]);
-        printf("Counter for type %d = %d\n", i, storage_descriptor->meta->counters_by_type[i]);
+        printf("\nFirst page offset for type %d = %d\n", i, storage_descriptor->meta->first_page_offsets[i]);
+        printf("Counter for type %d = %d\n", i, storage_descriptor->meta->pages_by_type[i]);
         if (storage_descriptor->free_blocks_of_type[i] != NULL)
             printf("Free blocks of type %d = %d\n", i, storage_descriptor->free_blocks_of_type[i]->size);
     }

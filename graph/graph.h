@@ -36,7 +36,7 @@ typedef struct Property {
     uint8_t in_use;
     uint32_t key_id;
     char value[MAX_LABEL_LENGTH];
-    //type?
+    uint8_t type;
     uint32_t next_prop_id;
 } Property;
 
