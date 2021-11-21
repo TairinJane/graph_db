@@ -320,57 +320,50 @@ uint32_t add_label(char* label_value, uint8_t label_type, Storage_Descriptor* st
     return label_id;
 }
 
-uint32_t add_properties(Linked_List* props_list, Storage_Descriptor* storage_descriptor) {
+uint32_t add_properties(Linked_List* properties, Storage_Descriptor* storage_descriptor) {
     uint32_t first_prop_id = (uint32_t) NULL;
 
-    if (props_list != NULL && props_list->size > 0) {
-        first_prop_id = ((Write_Block*) props_list->first->value)->free_block->id;
+    Linked_List* free_blocks_list = storage_descriptor->free_blocks_of_type[PROP_BLOCK_TYPE];
+    List_Node* current_free_node;
+    Free_Block* free_block;
 
-        for (uint32_t i = 0; i < props_list->size; ++i) {
-            Write_Block* write_block = (Write_Block*) props_list->first->value;
-            fseek(storage_descriptor->storage_file, (long) write_block->free_block->offset, SEEK_SET);
-            fwrite(write_block->block, sizeof(Property), 1, storage_descriptor->storage_file);
+    if (properties->size > 0) {
+        current_free_node = free_blocks_list->first;
+        free_block = current_free_node->value;
+
+        first_prop_id = free_block->id;
+
+        List_Node* current_prop_node = properties->first;
+        Prop_Descriptor* prop_descriptor;
+
+        for (uint32_t i = 0; i < properties->size; ++i) {
+            prop_descriptor = current_prop_node->value;
+
+            uint32_t key_id = find_label_id(prop_descriptor->key, KEYS_BLOCK_TYPE, storage_descriptor);
+            if (key_id == (uint32_t) NULL) {
+                add_label(prop_descriptor->key, KEYS_BLOCK_TYPE, storage_descriptor);
+            }
+            free_block = current_free_node->value;
+
+            Property property;
+            property.key_id = key_id;
+            strcat_s(property.value, MAX_LABEL_LENGTH / 8, prop_descriptor->value);
+            property.type = prop_descriptor->type;
+            property.next_prop_id = ((Free_Block*) current_free_node->next->value)->id;
+
+            fseek(storage_descriptor->storage_file, (long) free_block->offset, SEEK_SET);
+            fwrite(&property, sizeof(Property), 1, storage_descriptor->storage_file);
+
+            current_free_node = current_free_node->next;
+            remove_first(free_blocks_list);
+
+            current_prop_node = current_prop_node->next;
         }
 
         fflush(storage_descriptor->storage_file);
     }
-    free_list(props_list, 0);
 
     return first_prop_id;
-}
-
-Linked_List* prepare_properties_write_list(Linked_List* properties, Storage_Descriptor* storage_descriptor) {
-    List_Node* prop_list_node = properties->first;
-    Linked_List* properties_write_list = init_list();
-    Linked_List* free_blocks_list = storage_descriptor->free_blocks_of_type[PROP_BLOCK_TYPE];
-
-    for (uint32_t i = 0; i < properties->size; ++i) {
-        Prop_Descriptor* prop_descriptor = prop_list_node->value;
-
-        uint32_t key_id = find_label_id(prop_descriptor->key, KEYS_BLOCK_TYPE, storage_descriptor);
-        if (key_id == (uint32_t) NULL) {
-            add_label(prop_descriptor->key, KEYS_BLOCK_TYPE, storage_descriptor);
-        }
-
-        List_Node* free_list_node = free_blocks_list->first;
-
-        Property property;
-        property.key_id = key_id;
-        strcat_s(property.value, MAX_LABEL_LENGTH / 8, prop_descriptor->value);
-        property.type = prop_descriptor->type;
-        property.next_prop_id = ((Free_Block*) free_list_node->next->value)->id;
-
-        Free_Block* free_block = (Free_Block*) free_list_node->value;
-
-        Write_Block write_block;
-        write_block.free_block = free_block;
-        write_block.block = &property;
-
-        add_last(properties_write_list, &write_block);
-        remove_first(free_blocks_list);
-    }
-
-    return properties_write_list;
 }
 
 uint32_t find_last_relation_id(uint32_t node_id, Storage_Descriptor* storage_descriptor) {
@@ -404,41 +397,48 @@ uint8_t add_relations(Linked_List* relations_list, Storage_Descriptor* storage_d
     Linked_List* free_rel_blocks_list = storage_descriptor->free_blocks_of_type[RELATION_BLOCK_TYPE];
 
     uint32_t first_property_id;
-    Relation_Descriptor* rel_descriptor;
-    while (relations_list->size > 0) {
-        rel_descriptor = relations_list->first->value;
+    if (relations_list->size > 0) {
+        List_Node* current_free_node = free_rel_blocks_list->first;
 
-        Relation relation;
-        relation.in_use = 1;
+        List_Node* current_rel_node = relations_list->first;
+        Relation_Descriptor* rel_descriptor;
 
-        uint32_t rel_label_id = find_label_id(rel_descriptor->label, LABELS_BLOCK_TYPE, storage_descriptor);
-        if (rel_label_id == (uint32_t) NULL) {
-            add_label(rel_descriptor->label, LABELS_BLOCK_TYPE, storage_descriptor);
+        for (uint32_t i = 0; i < relations_list->size; ++i) {
+
+            rel_descriptor = current_rel_node->value;
+
+            Relation relation;
+            relation.in_use = 1;
+
+            uint32_t rel_label_id = find_label_id(rel_descriptor->label, LABELS_BLOCK_TYPE, storage_descriptor);
+            if (rel_label_id == (uint32_t) NULL) {
+                add_label(rel_descriptor->label, LABELS_BLOCK_TYPE, storage_descriptor);
+            }
+            relation.label_id = rel_label_id;
+
+            first_property_id = add_properties(rel_descriptor->properties, storage_descriptor);
+            relation.first_prop_id = first_property_id;
+
+            relation.from_id = rel_descriptor->first_node_id;
+            relation.from_prev_rel_id = find_last_relation_id(rel_descriptor->first_node_id, storage_descriptor);
+            relation.from_next_rel_id = (uint32_t) NULL;
+
+            relation.to_id = rel_descriptor->second_node_id;
+            relation.to_prev_rel_id = find_last_relation_id(rel_descriptor->second_node_id, storage_descriptor);
+            relation.to_next_rel_id = (uint32_t) NULL;
+
+            uint32_t offset = ((Free_Block*) current_free_node->value)->offset;
+            fseek(storage_descriptor->storage_file, (long) offset, SEEK_SET);
+            fwrite(&relation, sizeof(relation), 1, storage_descriptor->storage_file);
+
+            current_rel_node = current_rel_node->next;
+            current_free_node = current_free_node->next;
+
+            remove_first(free_rel_blocks_list);
         }
-        relation.label_id = rel_label_id;
 
-        Linked_List* properties_write_list = prepare_properties_write_list(rel_descriptor->properties,
-                storage_descriptor);
-        first_property_id = add_properties(properties_write_list, storage_descriptor);
-        relation.first_prop_id = first_property_id;
-
-        relation.from_id = rel_descriptor->first_node_id;
-        relation.from_prev_rel_id = find_last_relation_id(rel_descriptor->first_node_id, storage_descriptor);
-        relation.from_next_rel_id = (uint32_t) NULL;
-
-        relation.to_id = rel_descriptor->second_node_id;
-        relation.to_prev_rel_id = find_last_relation_id(rel_descriptor->second_node_id, storage_descriptor);
-        relation.to_next_rel_id = (uint32_t) NULL;
-
-        uint32_t offset = ((Free_Block*) free_rel_blocks_list->first->value)->offset;
-        fseek(storage_descriptor->storage_file, (long) offset, SEEK_SET);
-        fwrite(&relation, sizeof(relation), 1, storage_descriptor->storage_file);
-
-        remove_first(free_rel_blocks_list);
-        remove_first(relations_list);
+        fflush(storage_descriptor->storage_file);
     }
-
-    fflush(storage_descriptor->storage_file);
 
     return relations_list->size;
 }
@@ -449,27 +449,28 @@ uint32_t add_node(Node_Descriptor* node_descriptor, Storage_Descriptor* storage_
 
     uint32_t label_id;
     char* label;
-    uint8_t labels_count = 0;
-    while (node_descriptor->labels != NULL && node_descriptor->labels->size > 0) {
-        label = node_descriptor->labels->first->value;
+    if (node_descriptor->labels != NULL) {
+        List_Node* current_label_node = node_descriptor->labels->first;
 
-        if (label != NULL) {
-            label_id = find_label_id(label, LABELS_BLOCK_TYPE, storage_descriptor);
-            if (label_id == (uint32_t) NULL) {
-                label_id = add_label(label, LABELS_BLOCK_TYPE, storage_descriptor);
+        for (uint32_t i = 0; i < node_descriptor->labels->size; ++i) {
+            label = current_label_node->value;
+
+            if (label != NULL) {
+                label_id = find_label_id(label, LABELS_BLOCK_TYPE, storage_descriptor);
+                if (label_id == (uint32_t) NULL) {
+                    label_id = add_label(label, LABELS_BLOCK_TYPE, storage_descriptor);
+                }
+                node.label_id[i] = label_id;
             }
-            node.label_id[labels_count] = label_id;
+
+            current_label_node = current_label_node->next;
         }
 
-        remove_first(node_descriptor->labels);
-        labels_count++;
     }
 
     uint32_t first_property_id = (uint32_t) NULL;
     if (node_descriptor->properties != NULL) {
-        Linked_List* properties_write_list = prepare_properties_write_list(node_descriptor->properties,
-                storage_descriptor);
-        first_property_id = add_properties(properties_write_list, storage_descriptor);
+        first_property_id = add_properties(node_descriptor->properties, storage_descriptor);
     }
     node.first_prop_id = first_property_id;
 
@@ -482,6 +483,7 @@ uint32_t add_node(Node_Descriptor* node_descriptor, Storage_Descriptor* storage_
     Free_Block* free_node_block = storage_descriptor->free_blocks_of_type[NODE_BLOCK_TYPE]->first->value;
     fseek(storage_descriptor->storage_file, (long) free_node_block->offset, SEEK_SET);
     fwrite(&node, sizeof(node), 1, storage_descriptor->storage_file);
+
     fflush(storage_descriptor->storage_file);
 
     return 0;

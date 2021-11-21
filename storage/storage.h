@@ -49,11 +49,6 @@ typedef struct Free_Block {
     uint32_t id;
 } Free_Block;
 
-typedef struct Write_Block {
-    Free_Block* free_block;
-    void* block;
-} Write_Block;
-
 uint8_t open_storage(const char* filename, Storage_Descriptor** storage_descriptor);
 
 uint8_t close_storage(Storage_Descriptor* storage_descriptor);
