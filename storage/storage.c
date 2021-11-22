@@ -41,7 +41,7 @@ uint8_t get_block_size_by_type(uint8_t block_type) {
         case RELATION_BLOCK_TYPE:
             block_size = sizeof(Relation);
             break;
-        case KEYS_BLOCK_TYPE:
+        case PROP_VALUE_BLOCK_TYPE:
             block_size = sizeof(Property_Value);
             break;
         case LABELS_BLOCK_TYPE:
@@ -117,12 +117,18 @@ uint8_t open_storage(const char* filename, Storage_Descriptor** storage_descript
 
 uint8_t close_storage(Storage_Descriptor* storage_descriptor) {
     printf("\nClose storage\n");
+
+    printf("Update meta\n");
+    fseek(storage_descriptor->storage_file, 0, SEEK_SET);
+    fwrite(storage_descriptor->meta, sizeof(Storage_Meta), 1, storage_descriptor->storage_file);
+    fflush(storage_descriptor->storage_file);
+
     int res = fclose(storage_descriptor->storage_file);
     free(storage_descriptor->meta);
     printf("Free lists\n");
     free_list(storage_descriptor->free_blocks_list, 0);
     printf("Free storage\n");
-//    free(storage_descriptor);
+
     return res;
 }
 
@@ -130,35 +136,63 @@ uint64_t get_offset_by_id(uint32_t id) {
     return sizeof(Storage_Meta) + (sizeof(Block_Type) + sizeof(Block)) * id;
 }
 
+uint8_t get_block_by_id(uint32_t id, void* block, Block_Type* block_type, Storage_Descriptor* storage_descriptor) {
+    if (id > storage_descriptor->meta->last_block_id) {
+        return 1;
+    }
+
+    uint64_t offset = get_offset_by_id(id);
+    fseek(storage_descriptor->storage_file, (long) offset, SEEK_SET);
+    fread(block_type, sizeof(Block_Type), 1, storage_descriptor->storage_file);
+    fread(block, sizeof(Block), 1, storage_descriptor->storage_file);
+
+    return 0;
+}
+
+uint32_t write_block_to_free(Block_Type block_type, void* block, Storage_Descriptor* storage_descriptor) {
+    uint32_t free_block_id;
+
+    if (storage_descriptor->free_blocks_list->size > 0) {
+        free_block_id = (uint32_t) storage_descriptor->free_blocks_list->first->value;
+        remove_first(storage_descriptor->free_blocks_list);
+    } else {
+        free_block_id = ++(storage_descriptor->meta->last_block_id);
+    }
+
+    uint64_t offset = get_offset_by_id(free_block_id);
+
+    fseek(storage_descriptor->storage_file, (long) offset, SEEK_SET);
+    fwrite(&block_type, sizeof(Block_Type), 1, storage_descriptor->storage_file);
+    fwrite(&block, sizeof(Block), 1, storage_descriptor->storage_file);
+    fflush(storage_descriptor->storage_file);
+
+    return free_block_id;
+}
+
 uint8_t delete_block_by_id(uint32_t id, Storage_Descriptor* storage_descriptor) {
     Block_Type empty = (Block_Type) EMPTY_BLOCK;
 
     fseek(storage_descriptor->storage_file, (long) get_offset_by_id(id), SEEK_SET);
     fwrite(&empty, sizeof(Block_Type), 1, storage_descriptor->storage_file);
+    fflush(storage_descriptor->storage_file);
+
+    add_last(storage_descriptor->free_blocks_list, (void*) id);
 
     return 0;
 }
 
 uint8_t delete_properties(uint32_t first_property_id, Storage_Descriptor* storage_descriptor) {
-
     uint32_t current_id = first_property_id;
-    uint64_t current_offset = get_offset_by_id(current_id);
 
     Block_Type block_type;
     Property prop;
 
     while (current_id != (uint32_t) NULL) {
-
-        fseek(storage_descriptor->storage_file, (long) current_offset, SEEK_SET);
-        fread(&block_type, sizeof(Block_Type), 1, storage_descriptor->storage_file);
+        get_block_by_id(current_id, &prop, &block_type, storage_descriptor);
 
         if (block_type == PROP_BLOCK_TYPE) {
-            fread(&prop, sizeof(Property), 1, storage_descriptor->storage_file);
-
-            delete_block_by_id(current_id, storage_descriptor);
-
             current_id = prop.next_prop_id;
-            current_offset = get_offset_by_id(current_id);
+            delete_block_by_id(current_id, storage_descriptor);
         } else {
             current_id = (uint32_t) NULL;
         }
@@ -171,20 +205,26 @@ uint32_t add_properties(Linked_List* properties, Storage_Descriptor* storage_des
     uint32_t first_prop_id = (uint32_t) NULL;
 
     if (properties->size > 0) {
-        Linked_List* free_blocks_list = storage_descriptor->free_blocks_list;
-        List_Node* current_free_node = free_blocks_list->first;
         List_Node* current_prop = properties->first;
-
-        first_prop_id = (uint32_t) current_free_node->value;
+        uint32_t current_id;
 
         Prop_Descriptor* prop_descriptor;
         Property prop;
-        Block_Type block_type = PROP_BLOCK_TYPE;
 
         for (uint32_t i = 0; i < properties->size; ++i) {
-            prop.type = prop_descriptor->type;
-            strcat_s(prop.key, MAX_LABEL_LENGTH, prop_descriptor->key);
+            prop_descriptor = current_prop->value;
 
+            prop.type = prop_descriptor->type;
+            strcat_s(prop.key, strnlen_s(prop_descriptor->key, MAX_LABEL_LENGTH), prop_descriptor->key);
+            prop.value_id = write_block_to_free(PROP_VALUE_BLOCK_TYPE, prop_descriptor->value, storage_descriptor);
+
+            current_id = write_block_to_free(PROP_BLOCK_TYPE, &prop, storage_descriptor);
+
+            if (i == 0) {
+                first_prop_id = current_id;
+            }
+
+            current_prop = current_prop->next;
         }
 
         fflush(storage_descriptor->storage_file);
@@ -195,6 +235,8 @@ uint32_t add_properties(Linked_List* properties, Storage_Descriptor* storage_des
 
 uint32_t find_last_relation_id(uint32_t node_id, Storage_Descriptor* storage_descriptor) {
     Node node;
+    Block_Type block_type;
+    get_block_by_id(node_id, &node, &block_type, storage_descriptor);
 
     uint32_t relation_id = node.first_rel_id;
 
@@ -204,8 +246,14 @@ uint32_t find_last_relation_id(uint32_t node_id, Storage_Descriptor* storage_des
 
         uint8_t found = 0;
         do {
-            if (relation.from_id == node_id) { next_relation_id = relation.from_next_rel_id; }
-            else if (relation.to_id == node_id) { next_relation_id = relation.to_next_rel_id; }
+            get_block_by_id(next_relation_id, &relation, &block_type, storage_descriptor);
+
+            if (relation.from_id == node_id) {
+                next_relation_id = relation.from_next_rel_id;
+            } else if (relation.to_id == node_id) {
+                next_relation_id = relation.to_next_rel_id;
+            }
+
             if (next_relation_id == (uint32_t) NULL) {
                 found = 1;
             } else {
@@ -218,6 +266,7 @@ uint32_t find_last_relation_id(uint32_t node_id, Storage_Descriptor* storage_des
     return relation_id;
 }
 
+//TODO
 uint8_t add_relations(Linked_List* relations_list, Storage_Descriptor* storage_descriptor) {
     Linked_List* free_rel_blocks_list = storage_descriptor->free_blocks_list;
 
@@ -233,8 +282,6 @@ uint8_t add_relations(Linked_List* relations_list, Storage_Descriptor* storage_d
             rel_descriptor = current_rel_node->value;
 
             Relation relation;
-//            relation.in_use = 1;
-
 
             first_property_id = add_properties(rel_descriptor->properties, storage_descriptor);
             relation.first_prop_id = first_property_id;
@@ -265,7 +312,6 @@ uint8_t add_relations(Linked_List* relations_list, Storage_Descriptor* storage_d
 
 uint32_t add_node(Node_Descriptor* node_descriptor, Storage_Descriptor* storage_descriptor) {
     Node node;
-//    node.in_use = 1;
 
     uint32_t label_id;
     char* label;
