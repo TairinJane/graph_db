@@ -7,20 +7,31 @@
 
 #include <stdint.h>
 
-#define MAX_LABEL_LENGTH 40
-#define MAX_LABELS_COUNT 8
+#define MAX_LABEL_LENGTH 8
+#define MAX_LABELS_COUNT 4
 
-//41 bytes
+#define EMPTY_BLOCK 0
+#define NODE_BLOCK_TYPE 1
+#define RELATION_BLOCK_TYPE 2
+#define PROP_BLOCK_TYPE 3
+#define KEYS_BLOCK_TYPE 4
+#define LABELS_BLOCK_TYPE 5
+
+#define BLOCK_SIZE 40
+#define PAYLOAD_SIZE BLOCK_SIZE - 1
+
+//1 byte
+typedef uint8_t Block_Type;
+
+//12 bytes
 typedef struct Node {
-    uint8_t in_use;
     uint32_t first_rel_id;
     uint32_t first_prop_id;
-    uint32_t label_id[MAX_LABELS_COUNT]; //multiple labels????
+    uint32_t first_labels_id; //multiple labels????
 } Node;
 
-//33 bytes
+//32 bytes
 typedef struct Relation {
-    uint8_t in_use;
     uint32_t from_id;
     uint32_t to_id;
     uint32_t label_id; //only one label per relation
@@ -31,35 +42,31 @@ typedef struct Relation {
     uint32_t first_prop_id;
 } Relation;
 
-//49 bytes
+//52 bytes
 typedef struct Property {
-    uint8_t in_use;
-    uint32_t key_id;
-    char value[MAX_LABEL_LENGTH];
     uint8_t type;
+    uint32_t value_id;
     uint32_t next_prop_id;
+    char key[MAX_LABEL_LENGTH];
 } Property;
 
-//45 bytes
-typedef struct Label {
-    uint8_t in_use;
-    char label[MAX_LABEL_LENGTH];
-    uint32_t records_count;
-} Label;
+//44 bytes
+typedef struct Labels {
+    uint32_t next_label_id;
+    char labels[MAX_LABELS_COUNT][MAX_LABEL_LENGTH];
+} Labels;
 
-//45 bytes
-typedef struct Property_Key {
-    uint8_t in_use;
-    char key[MAX_LABEL_LENGTH];
-    uint32_t records_count;
-} Property_Key;
+//40 bytes
+typedef struct Property_Value {
+    char value[PAYLOAD_SIZE];
+} Property_Value;
 
 typedef union Block {
     Node node;
     Relation relation;
     Property property;
-    Property_Key property_key;
-    Label label;
+    Property_Value property_value;
+    Labels labels;
 } Block;
 
 #endif //GRAPH_LAB_GRAPH_H
