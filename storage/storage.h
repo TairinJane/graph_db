@@ -38,6 +38,12 @@ typedef struct Page_Meta {
     uint32_t next_page_offset;
 } Page_Meta;
 
+typedef struct Page {
+    Page_Meta * page_meta;
+    uint32_t first_id;
+    uint32_t last_id;
+} Page;
+
 typedef struct Storage_Descriptor {
     FILE* storage_file;
     Storage_Meta* meta;

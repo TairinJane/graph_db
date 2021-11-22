@@ -133,25 +133,35 @@ Linked_List* find_empty_blocks(uint8_t block_type, Storage_Descriptor* storage_d
 
                 switch (block_type) {
                     case NODE_BLOCK_TYPE:
-                        if (read_block->node.in_use == 0) { in_use = 0; }
+                        if (read_block->node.in_use == 0) {
+                            in_use = 0;
+                        }
                         break;
                     case PROP_BLOCK_TYPE:
-                        if (read_block->property.in_use == 0) { in_use = 0; }
+                        if (read_block->property.in_use == 0) {
+                            in_use = 0;
+                        }
                         break;
                     case RELATION_BLOCK_TYPE:
-                        if (read_block->relation.in_use == 0) { in_use = 0; }
+                        if (read_block->relation.in_use == 0) {
+                            in_use = 0;
+                        }
                         break;
                     case KEYS_BLOCK_TYPE:
-                        if (read_block->property_key.in_use == 0) { in_use = 0; }
+                        if (read_block->property_key.in_use == 0) {
+                            in_use = 0;
+                        }
                         break;
                     case LABELS_BLOCK_TYPE:
-                        if (read_block->label.in_use == 0) { in_use = 0; }
+                        if (read_block->label.in_use == 0) {
+                            in_use = 0;
+                        }
                         break;
                     default:
                         printf("Weird block type = %d", block_type);
                 }
 
-                if (in_use == 0) {
+                if (in_use != 1) {
                     Free_Block free_block;
                     free_block.offset = empty_offset;
                     free_block.id = page_meta.page_number * blocks_on_page + i;
@@ -231,7 +241,7 @@ uint8_t close_storage(Storage_Descriptor* storage_descriptor) {
     return res;
 }
 
-uint8_t get_block_by_id(uint32_t id, void* block, uint8_t block_type, Storage_Descriptor* storage_descriptor) {
+uint32_t find_block_offset_by_id(uint32_t id, uint8_t block_type, Storage_Descriptor* storage_descriptor) {
     uint8_t block_size = get_block_size_by_type(block_type);
     uint32_t blocks_per_page = PAGE_SIZE / block_size;
 
@@ -249,8 +259,34 @@ uint8_t get_block_by_id(uint32_t id, void* block, uint8_t block_type, Storage_De
     }
 
     uint32_t id_on_page = id % blocks_per_page;
-    fseek(storage_descriptor->storage_file, (long) id_on_page * block_size, SEEK_CUR);
+    return id_on_page * block_size;
+}
+
+uint8_t get_block_by_id(uint32_t id, void* block, uint8_t block_type, Storage_Descriptor* storage_descriptor) {
+    uint32_t offset = find_block_offset_by_id(id, block_type, storage_descriptor);
+    fseek(storage_descriptor->storage_file, (long) offset, SEEK_SET);
+
+    uint8_t block_size = get_block_size_by_type(block_type);
     fread(&block, block_size, 1, storage_descriptor->storage_file);
+
+    return 0;
+}
+
+uint8_t delete_properties(uint32_t first_property_offset, Storage_Descriptor* storage_descriptor) {
+    uint32_t current_offset = first_property_offset;
+
+    while (current_offset != (uint32_t) NULL) {
+        fseek(storage_descriptor->storage_file, (long) current_offset, SEEK_SET);
+
+        Property prop;
+        fread(&prop, sizeof(Property), 1, storage_descriptor->storage_file);
+
+        prop.in_use = 0;
+        fseek(storage_descriptor->storage_file, (long) current_offset, SEEK_SET);
+        fwrite(&prop, sizeof(Property), 1, storage_descriptor->storage_file);
+
+        current_offset = find_block_offset_by_id(prop.next_prop_id, PROP_BLOCK_TYPE, storage_descriptor);
+    }
 
     return 0;
 }
@@ -272,28 +308,33 @@ uint32_t find_label_id(char* label, uint8_t label_type, Storage_Descriptor* stor
             page_meta.page_number, page_meta.next_page_offset);
 
     Label read_label;
-    uint32_t label_offset = (uint32_t) NULL;
+    uint32_t label_id = (uint32_t) NULL;
     uint32_t blocks_on_page = PAGE_SIZE / sizeof(Label);
 
     do {
         if (page_meta.is_full != 1) {
-            for (int i = 0; i < blocks_on_page && label_offset == (uint32_t) NULL; ++i) {
+            for (int i = 0; i < blocks_on_page && label_id == (uint32_t) NULL; ++i) {
                 fread(&read_label, sizeof(Label), 1, storage_descriptor->storage_file);
+
                 if (read_label.in_use == 1 && strcmp(read_label.label, label) == 0) {
-                    label_offset = page_meta.page_number * blocks_on_page + i;
-                    printf("Found label %s id = %d", label, label_offset);
+                    label_id = page_meta.page_number * blocks_on_page + i;
+                    printf("Found label %s id = %d", label, label_id);
+
+                    read_label.records_count++;
+                    fseek(storage_descriptor->storage_file, (long ) -sizeof(Label), SEEK_CUR);
+                    fwrite(&read_label, sizeof(Label), 1, storage_descriptor->storage_file);
                 }
             }
         }
 
-        if (label_offset == (uint32_t) NULL && page_meta.next_page_offset != (uint32_t) NULL) {
+        if (label_id == (uint32_t) NULL && page_meta.next_page_offset != (uint32_t) NULL) {
             fseek(storage_descriptor->storage_file, (long) page_meta.next_page_offset, SEEK_SET);
             fread(&page_meta, sizeof(Page_Meta), 1, storage_descriptor->storage_file);
         }
     }
-    while (page_meta.next_page_offset != (uint32_t) NULL && label_offset == (uint32_t) NULL);
+    while (page_meta.next_page_offset != (uint32_t) NULL && label_id == (uint32_t) NULL);
 
-    return label_offset;
+    return label_id;
 }
 
 uint32_t add_label(char* label_value, uint8_t label_type, Storage_Descriptor* storage_descriptor) {
