@@ -23,36 +23,39 @@
 //1 byte
 typedef uint8_t Block_Type;
 
+typedef uint32_t Block_Pointer;
+
 //12 bytes
 typedef struct Node {
-    uint32_t first_rel_id;
-    uint32_t first_prop_id;
-    uint32_t first_labels_id; //multiple labels????
+    Block_Pointer first_rel_id;
+    Block_Pointer first_prop_id;
+    Block_Pointer first_labels_id; //multiple labels????
+    Block_Pointer next_node_id;
 } Node;
 
 //32 bytes
 typedef struct Relation {
-    uint32_t from_id;
-    uint32_t to_id;
-    uint32_t label_id; //only one label per relation
-    uint32_t from_prev_rel_id;
-    uint32_t from_next_rel_id;
-    uint32_t to_prev_rel_id;
-    uint32_t to_next_rel_id;
-    uint32_t first_prop_id;
+    Block_Pointer from_id;
+    Block_Pointer to_id;
+    Block_Pointer label_id; //only one label per relation
+    Block_Pointer from_prev_rel_id;
+    Block_Pointer from_next_rel_id;
+    Block_Pointer to_prev_rel_id;
+    Block_Pointer to_next_rel_id;
+    Block_Pointer first_prop_id;
 } Relation;
 
 //52 bytes
 typedef struct Property {
     uint8_t type;
     char key[MAX_LABEL_LENGTH];
-    uint32_t value_id;
-    uint32_t next_prop_id;
+    Block_Pointer value_id;
+    Block_Pointer next_prop_id;
 } Property;
 
 //44 bytes
 typedef struct Labels {
-    uint32_t next_label_id;
+    Block_Pointer next_label_id;
     char labels[MAX_LABELS_COUNT][MAX_LABEL_LENGTH];
 } Labels;
 

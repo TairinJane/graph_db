@@ -23,8 +23,8 @@ typedef struct Node_Descriptor {
 
 struct Relation_Descriptor {
     char* label;
-    uint32_t first_node_id;
-    uint32_t second_node_id;
+    Block_Pointer first_node_id;
+    Block_Pointer second_node_id;
     Linked_List* properties;
 };
 

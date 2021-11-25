@@ -17,14 +17,9 @@ int main() {
 
     open_storage("storage.s", &storage_descriptor);
 
-    printf("\nStorage Meta in main: mark = %d, last block id = %d, pages = %d\n",
+    printf("\nStorage Meta in main: mark = %d, last block id = %d\n",
            storage_descriptor->meta->storage_mark,
-           storage_descriptor->meta->last_block_id,
-           storage_descriptor->meta->blocks_by_type[PAGES_INDEX]);
-
-    for (int i = 0; i < COUNTERS_AMOUNT; ++i) {
-        printf("Counter for type %d = %d\n", i, storage_descriptor->meta->blocks_by_type[i]);
-    }
+           storage_descriptor->meta->last_block_id);
 
     if (storage_descriptor->free_blocks_list != NULL)
         printf("Free blocks count = %d\n", storage_descriptor->free_blocks_list->size);
@@ -92,8 +87,8 @@ int main() {
 
     printf("\nClose everything\n");
 
-//    free_list(props, false);
-//    free_list(labels, false);
+    free_list(props, false);
+    free_list(labels, false);
 
     close_storage(storage_descriptor);
 
