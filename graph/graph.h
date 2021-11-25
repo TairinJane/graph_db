@@ -45,9 +45,9 @@ typedef struct Relation {
 //52 bytes
 typedef struct Property {
     uint8_t type;
+    char key[MAX_LABEL_LENGTH];
     uint32_t value_id;
     uint32_t next_prop_id;
-    char key[MAX_LABEL_LENGTH];
 } Property;
 
 //44 bytes
@@ -57,15 +57,15 @@ typedef struct Labels {
 } Labels;
 
 //40 bytes
-typedef struct Property_Value {
+typedef struct String_Value {
     char value[PAYLOAD_SIZE];
-} Property_Value;
+} String_Value;
 
 typedef union Block {
     Node node;
     Relation relation;
     Property property;
-    Property_Value property_value;
+    String_Value property_value;
     Labels labels;
 } Block;
 

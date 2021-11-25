@@ -9,6 +9,7 @@
 
 #include "../graph/graph.h"
 #include "linked_list.h"
+#include "data.h"
 
 #define STORAGE_MARK 666
 
@@ -34,5 +35,9 @@ typedef struct Storage_Descriptor {
 uint8_t open_storage(const char* filename, Storage_Descriptor** storage_descriptor);
 
 uint8_t close_storage(Storage_Descriptor* storage_descriptor);
+
+uint32_t add_node(Node_Descriptor* node_descriptor, Storage_Descriptor* storage_descriptor);
+
+uint8_t get_node(uint32_t node_id, Node_Descriptor* node_descriptor, Storage_Descriptor* storage_descriptor);
 
 #endif //GRAPH_LAB_STORAGE_H
