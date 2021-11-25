@@ -25,11 +25,12 @@ typedef uint8_t Block_Type;
 
 typedef uint32_t Block_Pointer;
 
-//12 bytes
+//20 bytes
 typedef struct Node {
     Block_Pointer first_rel_id;
     Block_Pointer first_prop_id;
-    Block_Pointer first_labels_id; //multiple labels????
+    Block_Pointer labels_id; //multiple labels????
+    Block_Pointer prev_node_id;
     Block_Pointer next_node_id;
 } Node;
 
@@ -55,7 +56,7 @@ typedef struct Property {
 
 //44 bytes
 typedef struct Labels {
-    Block_Pointer next_label_id;
+    uint8_t labels_count;
     char labels[MAX_LABELS_COUNT][MAX_LABEL_LENGTH];
 } Labels;
 

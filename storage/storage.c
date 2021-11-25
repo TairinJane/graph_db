@@ -334,6 +334,23 @@ Block_Pointer add_relations(Linked_List* relations_list, Storage_Descriptor* sto
     return first_rel_id;
 }
 
+uint8_t add_node_to_list(Block_Pointer added_node_id, Storage_Descriptor * storage_descriptor) {
+    Block_Pointer last_node_id = storage_descriptor->meta->last_node_id;
+    Node last_node;
+    Block_Type block_type;
+
+    get_block_by_id(last_node_id, &last_node, &block_type, storage_descriptor);
+
+    last_node.next_node_id = added_node_id;
+    write_block_by_id(last_node_id, &last_node, block_type, storage_descriptor);
+
+    storage_descriptor->meta->last_node_id = added_node_id;
+
+    fflush(storage_descriptor->storage_file);
+
+    return 0;
+}
+
 Block_Pointer add_node(Node_Descriptor* node_descriptor, Storage_Descriptor* storage_descriptor) {
     Node node;
     printf("\nAdd node\n");
@@ -350,12 +367,13 @@ Block_Pointer add_node(Node_Descriptor* node_descriptor, Storage_Descriptor* sto
     }
     node.first_rel_id = first_rel_id;
 
-    node.first_labels_id = (Block_Pointer) NULL;
+    node.labels_id = (Block_Pointer) NULL;
     if (node_descriptor->labels != NULL) {
-        List_Node* current_label_node = node_descriptor->labels->first;
         char* label;
         Labels node_labels;
-        node_labels.next_label_id = (Block_Pointer) NULL;
+        List_Node* current_label_node = node_descriptor->labels->first;
+
+        node_labels.labels_count = node_descriptor->labels->size;
 
         for (uint32_t i = 0; i < node_descriptor->labels->size && i < MAX_LABELS_COUNT; ++i) {
             label = current_label_node->value;
@@ -364,33 +382,32 @@ Block_Pointer add_node(Node_Descriptor* node_descriptor, Storage_Descriptor* sto
 
             current_label_node = current_label_node->next;
         }
-        node.first_labels_id = write_block_to_free(LABELS_BLOCK_TYPE, &node_labels, storage_descriptor);
+        node.labels_id = write_block_to_free(LABELS_BLOCK_TYPE, &node_labels, storage_descriptor);
     }
+    node.next_node_id = (Block_Pointer) NULL;
+    node.prev_node_id = storage_descriptor->meta->last_node_id;
 
     Block_Pointer node_id = write_block_to_free(NODE_BLOCK_TYPE, &node, storage_descriptor);
+
+    add_node_to_list(node_id, storage_descriptor);
 
     return node_id;
 }
 
-uint8_t get_node_labels(Block_Pointer first_labels_id, Linked_List* labels_list, Storage_Descriptor* storage_descriptor) {
+uint8_t get_node_labels(Block_Pointer labels_id, Linked_List* labels_list, Storage_Descriptor* storage_descriptor) {
     Labels node_labels;
     Block_Type block_type;
     printf("\nGel labels\n");
 
-    if (first_labels_id != (Block_Pointer) NULL) {
-        Block_Pointer next_labels_id = first_labels_id;
+    if (labels_id != (Block_Pointer) NULL) {
         char* label;
-        do {
-            get_block_by_id(next_labels_id, &node_labels, &block_type, storage_descriptor);
-            for (int i = 0; i < MAX_LABELS_COUNT; ++i) {
+            get_block_by_id(labels_id, &node_labels, &block_type, storage_descriptor);
+            for (int i = 0; i < node_labels.labels_count; ++i) {
                 label = malloc(MAX_LABEL_LENGTH);
                 strncpy_s(label, MAX_LABEL_LENGTH, node_labels.labels[i], _TRUNCATE);
                 printf("Get label %d = %s\n", i, label);
                 add_last(labels_list, label);
             }
-            next_labels_id = node_labels.next_label_id;
-        }
-        while (next_labels_id != (Block_Pointer) NULL && block_type != EMPTY_BLOCK);
     }
 
     return 0;
@@ -489,7 +506,7 @@ uint8_t get_node(Block_Pointer node_id, Node_Descriptor* node_descriptor, Storag
     get_node_relations(node_id, node->first_rel_id, node_descriptor->relations, storage_descriptor);
 
     node_descriptor->labels = init_list();
-    get_node_labels(node->first_labels_id, node_descriptor->labels, storage_descriptor);
+    get_node_labels(node->labels_id, node_descriptor->labels, storage_descriptor);
 
     return 0;
 }

@@ -13,8 +13,6 @@
 
 #define STORAGE_MARK 666
 
-#define PAGES_INDEX 0
-
 typedef struct Storage_Meta {
     uint32_t storage_mark;
     Block_Pointer last_block_id;
